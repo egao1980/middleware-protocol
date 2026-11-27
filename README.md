@@ -33,7 +33,7 @@ Middleware for cl-stack handlers of any request and response type, written the C
                                :app #'my-clack-app …)
 ```
 
-**Status:** M0 contract (0.1.0): the API, the rules in the file headers of `src/`, `%m0-pending` stubs, and the Rove suite in `tests/`, which is the specification. The design and its locked decisions are in the capability brief [cl-stack/docs/capabilities/middleware.md](https://github.com/egao1980/cl-stack/blob/main/docs/capabilities/middleware.md).
+**Status:** M0 (0.1.0) implemented (team-solve: 112 tests, 356 assertions). The rules are in the file headers of `src/`, and the Rove suite in `tests/` is the specification. The design and its locked decisions are in the capability brief [cl-stack/docs/capabilities/middleware.md](https://github.com/egao1980/cl-stack/blob/main/docs/capabilities/middleware.md).
 
 ```sh
 cl-repo test --system middleware-protocol

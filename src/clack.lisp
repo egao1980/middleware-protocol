@@ -80,9 +80,6 @@
 
 (in-package #:middleware-protocol/clack)
 
-(defun %m0-pending (name)
-  (middleware-protocol::%m0-pending name))
-
 (defclass clack-request (request)
   ((%clack-env :initarg :env :initform nil :accessor clack-request-env))
   (:documentation "A request holding a Clack env (file header)."))
@@ -94,21 +91,43 @@
   (:documentation "Terminal handler calling a Clack app (file header)."))
 
 (defmethod handle ((handler clack-handler) (request clack-request))
-  (%m0-pending '(handle clack-handler)))
+  "The terminal: the app's response to the request's env, with the request under
+:MIDDLEWARE.REQUEST (file header)."
+  (funcall (clack-handler-app handler)
+           (list* :middleware.request request (clack-request-env request))))
 
 (defun env-request (env)
   "The request stored under :MIDDLEWARE.REQUEST in ENV, or NIL."
-  (declare (ignore env))
-  (%m0-pending 'env-request))
+  (getf env :middleware.request))
 
 (defun clack-app (handler &key (request-class 'clack-request))
   "A Clack app that handles each env with HANDLER (file header)."
-  (declare (ignore handler request-class))
-  (%m0-pending 'clack-app))
+  ;; Checked, not resolved: a class defined after this call still works by name.
+  (check-type request-class (or symbol class))
+  (lambda (env)
+    (handle handler (make-instance request-class :env env))))
 
 (defmethod map-response ((response function) transform)
-  (declare (ignore transform))
-  (%m0-pending '(map-response function)))
+  "A Clack streaming response whose head goes through TRANSFORM (file header)."
+  (lambda (responder)
+    (funcall response
+             (lambda (head)
+               ;; RESPONDER's value (the writer) goes back to the app unchanged.
+               (funcall responder (funcall transform head))))))
+
+(defun %add-response-headers (response additions)
+  "A new immediate response: RESPONSE's headers followed by each header of the plist
+ADDITIONS whose name (STRING-EQUAL) the response lacks, in order. APPEND copies
+the header list, so RESPONSE's own lists are not modified."
+  (destructuring-bind (status headers &rest rest) response
+    (list* status
+           (append headers
+                   (loop for (name value) on additions by #'cddr
+                         unless (loop for (present) on headers by #'cddr
+                                      thereis (string-equal (string name) (string present)))
+                           collect name
+                           and collect value))
+           rest)))
 
 (defclass response-headers-handler (handler)
   ((%response-headers :initarg :response-headers :initform nil
@@ -116,4 +135,9 @@
   (:documentation "Mixin adding response headers the response does not have (file header)."))
 
 (defmethod handle :around ((handler response-headers-handler) (request clack-request))
-  (%m0-pending '(handle :around response-headers-handler)))
+  "Add the configured headers the response lacks, also to streamed heads and to
+short-circuit answers (file header)."
+  (let ((additions (response-headers-handler-headers handler)))
+    (map-response (call-next-method)
+                  (lambda (response)
+                    (%add-response-headers response additions)))))

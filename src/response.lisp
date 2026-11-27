@@ -32,15 +32,10 @@
 
 (in-package #:middleware-protocol)
 
-(defun %m0-pending (name)
-  "Contract stub for slice M0. Every call is replaced by the implementation,
-then this function is deleted."
-  (error "middleware-protocol M0 pending: ~A" name))
-
 (defgeneric map-response (response function)
   (:documentation "RESPONSE transformed by FUNCTION: now for an immediate response, when it is
 produced for a deferred one (file header)."))
 
 (defmethod map-response (response function)
-  (declare (ignore response function))
-  (%m0-pending 'map-response))
+  "An immediate response: FUNCTION's primary value, computed now (file header)."
+  (values (funcall function response)))

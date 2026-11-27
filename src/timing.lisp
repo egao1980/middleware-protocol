@@ -29,8 +29,8 @@
 (in-package #:middleware-protocol)
 
 (defun %internal-real-seconds ()
-  "The default clock (file header)."
-  (%m0-pending '%internal-real-seconds))
+  "The default clock (file header): internal real time in seconds, a rational."
+  (/ (get-internal-real-time) internal-time-units-per-second))
 
 (defclass timing-handler (handler)
   ((%timing-report :initarg :timing-report :initform nil :accessor timing-handler-report)
@@ -39,5 +39,15 @@
   (:documentation "Mixin reporting each request's time to a function (file header)."))
 
 (defmethod handle :around ((handler timing-handler) request)
-  (declare (ignore request))
-  (%m0-pending '(handle :around timing-handler)))
+  "Time the inner layers and report through MAP-RESPONSE (file header)."
+  (let ((report (timing-handler-report handler)))
+    (if (null report)
+        (call-next-method)
+        (let* ((clock (timing-handler-clock handler))
+               (start (funcall clock)))
+          (map-response (call-next-method)
+                        (lambda (response)
+                          ;; END is read before REPORT is called: arguments are
+                          ;; evaluated left to right.
+                          (funcall report request response (- (funcall clock) start))
+                          response))))))

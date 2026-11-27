@@ -60,13 +60,38 @@ header). Called before unwinding; may call DECLINE."))
 
 (defun decline (&optional condition)
   "Invoke the DECLINE restart: the ERROR-HANDLER lets CONDITION propagate (file header)."
-  (declare (ignore condition))
-  (%m0-pending 'decline))
+  (let ((restart (find-restart 'decline condition)))
+    (if restart
+        (invoke-restart restart)
+        (error 'control-error))))
 
 (defmethod handle-error ((handler error-handler) request condition)
-  (declare (ignore request condition))
-  (%m0-pending 'handle-error))
+  "ERROR-FUNCTION's response for CONDITION, or decline when there is none (file header)."
+  (let ((function (error-handler-function handler)))
+    (if function
+        (funcall function request condition)
+        (decline condition))))
 
 (defmethod handle :around ((handler error-handler) request)
-  (declare (ignore request))
-  (%m0-pending '(handle :around error-handler)))
+  "Map conditions of ERROR-TYPE from the inner layers to a response, deciding before
+unwinding (file header)."
+  (let ((type (error-handler-type handler)))
+    (block handled
+      (handler-bind
+          ((condition
+             (lambda (condition)
+               ;; HANDLER-BIND does not evaluate its type, and TYPE is a slot
+               ;; value (maybe compound): filter when the condition is signalled.
+               (when (typep condition type)
+                 (restart-case
+                     ;; The only unwind: inner cleanup forms run after the decision.
+                     (return-from handled
+                       (values (handle-error handler request condition)))
+                   (decline ()
+                     :report "Decline: let the condition propagate to outer handlers."
+                     ;; Associated with CONDITION: DECLINE of another condition
+                     ;; does not see this restart.
+                     :test (lambda (other) (or (null other) (eq other condition)))
+                     ;; The handler returns normally: the signal goes on outward.
+                     nil))))))
+        (call-next-method)))))

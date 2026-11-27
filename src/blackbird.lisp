@@ -17,5 +17,9 @@
 (in-package #:middleware-protocol)
 
 (defmethod map-response ((response blackbird:promise) transform)
-  (declare (ignore transform))
-  (%m0-pending '(map-response blackbird:promise)))
+  "A new promise of RESPONSE's first value mapped in turn (file header). ATTACH
+forwards a rejection without calling the callback, and rejects the new promise
+when the callback signals."
+  (blackbird:attach response
+                    (lambda (&rest values)
+                      (map-response (first values) transform))))

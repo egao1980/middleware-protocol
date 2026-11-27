@@ -57,17 +57,67 @@
 (defgeneric request-properties (request)
   (:documentation "A fresh property list of REQUEST's properties."))
 
+;;; The slot holds a plist with each key once (compared with EQL) whose conses
+;;; belong to the request alone: :PROPERTIES is copied in and REQUEST-PROPERTIES
+;;; copies out. So (SETF REQUEST-PROPERTY) may replace a value in place.
+
+(defun %property-list-p (object)
+  "True when OBJECT is a proper list of even length (CHECK-TYPE's test for :PROPERTIES)."
+  (multiple-value-bind (shape length) (%list-shape object)
+    (and (eq shape :proper) (evenp length))))
+
+(defun %property-tail (plist key)
+  "The tail of PLIST that starts with KEY (compared with EQL), or NIL."
+  (loop for tail on plist by #'cddr
+        when (eql (car tail) key)
+          return tail))
+
+(defun %unique-properties (plist)
+  "A fresh plist of PLIST's keys, each once (EQL), the first occurrence winning as
+for GETF, in PLIST's order."
+  (loop with keys = '()
+        for (key value) on plist by #'cddr
+        unless (member key keys)        ; MEMBER's default test is EQL
+          do (push key keys)
+          and collect key
+          and collect value))
+
+(defmethod shared-initialize :after ((request request) slot-names
+                                     &key ((:properties properties) nil properties-p))
+  "Copy :PROPERTIES, so the caller's list is never modified (file header)."
+  (declare (ignore slot-names))
+  (when properties-p
+    (check-type properties (satisfies %property-list-p) "a property list")
+    (setf (slot-value request '%request-properties) (%unique-properties properties))))
+
 (defmethod request-property ((request request) key &optional default)
-  (declare (ignore key default))
-  (%m0-pending 'request-property))
+  "KEY's value and T, or DEFAULT and NIL (file header)."
+  (let ((tail (%property-tail (slot-value request '%request-properties) key)))
+    (if tail
+        (values (second tail) t)
+        (values default nil))))
 
 (defmethod (setf request-property) (value (request request) key &optional default)
-  (declare (ignore value key default))
-  (%m0-pending '(setf request-property)))
+  "Add KEY or replace its value; DEFAULT is ignored (file header)."
+  (declare (ignore default))
+  (let ((tail (%property-tail (slot-value request '%request-properties) key)))
+    (if tail
+        (setf (second tail) value)
+        (setf (slot-value request '%request-properties)
+              (list* key value (slot-value request '%request-properties))))
+    value))
 
 (defmethod remove-request-property ((request request) key)
-  (declare (ignore key))
-  (%m0-pending 'remove-request-property))
+  "Remove KEY; true when it was present (file header)."
+  (let ((plist (slot-value request '%request-properties)))
+    (when (%property-tail plist key)
+      (setf (slot-value request '%request-properties)
+            (loop for (k v) on plist by #'cddr
+                  unless (eql k key)
+                    collect k
+                    and collect v))
+      t)))
 
 (defmethod request-properties ((request request))
-  (%m0-pending 'request-properties))
+  "A fresh plist of REQUEST's properties (file header)."
+  (copy-list (slot-value request '%request-properties)))

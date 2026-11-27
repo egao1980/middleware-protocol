@@ -121,21 +121,24 @@ inner methods see (file header)."))
 response (file header)."))
 
 (defmethod handle ((handler function) request)
-  (declare (ignore request))
-  (%m0-pending 'handle))
+  "A function is a handler: its value for REQUEST, with no hooks (file header)."
+  (funcall handler request))
 
 (defmethod prepare-request ((handler handler) request)
-  (declare (ignore request))
-  (%m0-pending 'prepare-request))
+  "The default hook: REQUEST as it is."
+  request)
 
 (defmethod finish-response ((handler handler) request response)
-  (declare (ignore request response))
-  (%m0-pending 'finish-response))
+  "The default hook: RESPONSE as it is."
+  (declare (ignore request))
+  response)
 
 (defmethod handle :around ((handler handler) request)
   "The base method (file header)."
-  (declare (ignore request))
-  (%m0-pending '(handle :around handler)))
+  (let ((request* (prepare-request handler request)))
+    (map-response (call-next-method handler request*)
+                  (lambda (response)
+                    (finish-response handler request* response)))))
 
 (defclass function-handler (handler)
   ((%handler-function :initarg :function
@@ -144,5 +147,6 @@ response (file header)."))
   (:documentation "Terminal handler calling a function of the request (file header)."))
 
 (defmethod handle ((handler function-handler) request)
-  (declare (ignore request))
-  (%m0-pending '(handle function-handler)))
+  "The terminal: HANDLER-FUNCTION called with REQUEST. A symbol is called through
+its current definition (file header)."
+  (funcall (handler-function handler) request))
